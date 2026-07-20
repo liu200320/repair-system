@@ -34,6 +34,7 @@ async function handleLogout() {
         <el-menu mode="horizontal" background-color="#1a56db" text-color="#c8d9f8" active-text-color="#ffffff"
           :default-active="route.path" router style="border:none; height:60px;">
           <el-menu-item index="/repairs">维修记录</el-menu-item>
+          <el-menu-item index="/consumables">耗材管理</el-menu-item>
           <el-menu-item index="/dashboard">统计看板</el-menu-item>
           <el-menu-item v-if="auth.isAdmin" index="/locations">点位管理</el-menu-item>
           <el-menu-item v-if="auth.isAdmin" index="/users">用户管理</el-menu-item>

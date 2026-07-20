@@ -2,18 +2,20 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.api.v1 import repair, upload, export, auth, location, stats, monitor_point
+from app.api.v1 import repair, upload, export, auth, location, stats, monitor_point, consumable
 from app.core.database import engine, SessionLocal
 from app.core.config import UPLOAD_DIR
 import app.models.repair       # noqa
 import app.models.user         # noqa
 import app.models.location     # noqa
 import app.models.monitor_point  # noqa  不自动建表，表由外部维护
+import app.models.consumable   # noqa
 
 # 自动建表
 app.models.repair.Base.metadata.create_all(bind=engine)
 app.models.user.Base.metadata.create_all(bind=engine)
 app.models.location.Base.metadata.create_all(bind=engine)
+app.models.consumable.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="维修记录系统 API",
@@ -39,6 +41,7 @@ app.include_router(export.router,   prefix="/api/v1", tags=["Word导出"])
 app.include_router(location.router,      prefix="/api/v1", tags=["点位管理"])
 app.include_router(monitor_point.router, prefix="/api/v1", tags=["监控点位"])
 app.include_router(stats.router,         prefix="/api/v1", tags=["统计"])
+app.include_router(consumable.router,    prefix="/api/v1", tags=["耗材管理"])
 
 
 @app.on_event("startup")
