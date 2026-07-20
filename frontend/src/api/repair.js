@@ -40,7 +40,12 @@ export const deletePhoto = (repairId, photoId) =>
 
 /** 导出单条维修记录 Word */
 export const exportWord = async (repairId, recordNo) => {
-  const res = await fetch(`/api/v1/repairs/${repairId}/export`, { method: 'POST' })
+  const token = localStorage.getItem('repair_token')
+  const res = await fetch(`/api/v1/repairs/${repairId}/export`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (res.status === 401) throw new Error('登录已过期，请重新登录')
   if (!res.ok) throw new Error('导出失败')
   const blob = await res.blob()
   _downloadBlob(blob, `维修记录_${recordNo}.docx`)
@@ -52,10 +57,15 @@ export const exportWord = async (repairId, recordNo) => {
  * @param {string} endDate   - 'YYYY-MM-DD'
  */
 export const exportWordRange = async (startDate, endDate) => {
+  const token = localStorage.getItem('repair_token')
   const res = await fetch(
     `/api/v1/repairs/export/range?start_date=${startDate}&end_date=${endDate}`,
-    { method: 'GET' }
+    {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }
   )
+  if (res.status === 401) throw new Error('登录已过期，请重新登录')
   if (res.status === 404) throw new Error('该时间段内没有维修记录')
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))

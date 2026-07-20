@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -25,11 +26,12 @@ def export_single(repair_id: int, db: Session = Depends(get_db), _=Depends(get_c
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"导出失败：{str(e)}")
 
+    dl_name = f"维修记录_{record.record_no}.docx"
     return FileResponse(
         path=output_path,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        filename=f"维修记录_{record.record_no}.docx",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''维修记录_{record.record_no}.docx"},
+        filename=dl_name,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(dl_name)}"},
     )
 
 
@@ -73,5 +75,5 @@ def export_range(
         path=output_path,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
