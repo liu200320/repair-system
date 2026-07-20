@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 
 load_dotenv()
 
@@ -10,7 +11,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
 DB_NAME = os.getenv("DB_NAME", "repair_db")
 
 DATABASE_URL = (
-    f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"mysql+pymysql://{quote_plus(DB_USER)}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     "?charset=utf8mb4"
 )
 
