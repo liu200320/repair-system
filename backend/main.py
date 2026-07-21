@@ -6,24 +6,22 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect as sa_inspect
 
-from app.api.v1 import auth, consumable, export, location, monitor_point, repair, stats, upload
+from app.api.v1 import access_inspection, auth, consumable, export, location, monitor_point, network_inspection, repair, stats, upload
 from app.core.config import ALLOWED_ORIGINS, EXPORT_RETENTION_DAYS, UPLOAD_DIR
-from app.core.database import engine, SessionLocal
-import app.models.consumable        # noqa
-import app.models.location          # noqa
-import app.models.monitor_point     # noqa
-import app.models.network_location  # noqa  仅注册模型，建表由 Alembic 迁移003负责
-import app.models.repair            # noqa
-import app.models.user              # noqa
+from app.core.database import engine, SessionLocal, Base
+import app.models.access_inspection   # noqa
+import app.models.access_location      # noqa
+import app.models.consumable           # noqa
+import app.models.location             # noqa
+import app.models.monitor_point        # noqa
+import app.models.network_inspection   # noqa
+import app.models.network_location     # noqa
+import app.models.repair               # noqa
+import app.models.user                 # noqa
 
-# 自动建表（新部署时建表；Alembic 负责后续 schema 迁移）
-app.models.repair.Base.metadata.create_all(bind=engine)
-app.models.user.Base.metadata.create_all(bind=engine)
-app.models.location.Base.metadata.create_all(bind=engine)
-app.models.consumable.Base.metadata.create_all(bind=engine)
-# network_locations 由迁移003建表并写入种子数据，不在此处 create_all
+# 自动建表（create_all 会跳过已存在的表）
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="维修记录系统 API",
@@ -42,17 +40,19 @@ app.add_middleware(
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-app.include_router(auth.router,          prefix="/api/v1", tags=["认证"])
-app.include_router(repair.router,        prefix="/api/v1", tags=["维修记录"])
-app.include_router(upload.router,        prefix="/api/v1", tags=["照片上传"])
-app.include_router(export.router,        prefix="/api/v1", tags=["Word导出"])
-app.include_router(location.router,      prefix="/api/v1", tags=["点位管理"])
-app.include_router(monitor_point.router, prefix="/api/v1", tags=["监控点位"])
-app.include_router(stats.router,         prefix="/api/v1", tags=["统计"])
-app.include_router(consumable.router,    prefix="/api/v1", tags=["耗材管理"])
+app.include_router(auth.router,               prefix="/api/v1", tags=["认证"])
+app.include_router(repair.router,             prefix="/api/v1", tags=["维修记录"])
+app.include_router(upload.router,             prefix="/api/v1", tags=["照片上传"])
+app.include_router(export.router,             prefix="/api/v1", tags=["Word导出"])
+app.include_router(location.router,           prefix="/api/v1", tags=["点位管理"])
+app.include_router(monitor_point.router,      prefix="/api/v1", tags=["监控点位"])
+app.include_router(stats.router,              prefix="/api/v1", tags=["统计"])
+app.include_router(consumable.router,         prefix="/api/v1", tags=["耗材管理"])
+app.include_router(network_inspection.router, prefix="/api/v1", tags=["网络基础设施巡检"])
+app.include_router(access_inspection.router,  prefix="/api/v1", tags=["门禁巡检"])
 
 
-# ── 导出文件清理 ───────────────────────────────────────────────
+# ── 导出文件清理 ─────────────────────────────────────────────────
 
 def _cleanup_old_exports():
     export_dir = os.path.join(UPLOAD_DIR, "exports")
@@ -69,38 +69,69 @@ def _cleanup_old_exports():
 
 
 async def _cleanup_exports_daily():
-    """每24小时清理一次过期导出文件"""
     while True:
         await asyncio.sleep(24 * 3600)
         _cleanup_old_exports()
 
 
-# ── Alembic 迁移 ────────────────────────────────────────────────
+# ── 启动时结构补丁（直接 SQL，避免 async 事件循环中调用 Alembic API） ──
+# Alembic 命令行仍可用于 CI/部署：cd backend && alembic upgrade head
 
-def _run_alembic_migrations():
-    from alembic.config import Config as AlembicConfig
-    from alembic import command as alembic_command
+_NETWORK_LOCATIONS_SEED = [
+    "鸿翼楼二楼楼梯口", "实训楼二楼楼梯口", "嘉锐楼三楼楼梯口",
+    "绍年院网络机柜",   "文清楼网络机柜",   "文兴楼网络机柜",
+    "众创空间",         "体育工作部",       "冻精站1楼房间",
+    "蚕桑礼堂弱电间",   "团委二楼",         "牧歌院二栋",
+    "综合楼四楼弱电间", "综合楼五楼弱电间", "学生服务中心二楼网络机柜",
+    "实训中心办公楼",   "五谷苑5栋",        "三实牧院",
+    "种畜场招待所楼梯间", "种畜场原医务室", "种畜场办公楼",
+]
 
-    alembic_cfg = AlembicConfig("alembic.ini")
+_ACCESS_LOCATIONS_SEED = [
+    "学校大门口",
+    "冻精站大门口",
+    "种畜推广中心大门口",
+]
+
+
+def _run_startup_migrations():
+    from sqlalchemy import text, inspect as sa_inspect
     inspector = sa_inspect(engine)
 
-    if not inspector.has_table("alembic_version"):
+    with engine.begin() as conn:
+        # 给旧库补 token_version 列
         if inspector.has_table("users"):
-            # 已有旧版本数据库（无 Alembic 历史），标记到基线，再执行新迁移
-            alembic_command.stamp(alembic_cfg, "001")
-        else:
-            # 全新部署，create_all 已建好所有表，直接标记到最新
-            alembic_command.stamp(alembic_cfg, "head")
+            cols = [c["name"] for c in inspector.get_columns("users")]
+            if "token_version" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0"
+                ))
 
-    alembic_command.upgrade(alembic_cfg, "head")
+        # 补 network_locations 种子数据（21个网络巡检地点）
+        if inspector.has_table("network_locations"):
+            count = conn.execute(text("SELECT COUNT(*) FROM network_locations")).scalar()
+            if count == 0:
+                conn.execute(
+                    text("INSERT INTO network_locations (name) VALUES (:name)"),
+                    [{"name": loc} for loc in _NETWORK_LOCATIONS_SEED],
+                )
+
+        # 补 access_locations 种子数据（3个门禁地点）
+        if inspector.has_table("access_locations"):
+            count = conn.execute(text("SELECT COUNT(*) FROM access_locations")).scalar()
+            if count == 0:
+                conn.execute(
+                    text("INSERT INTO access_locations (name) VALUES (:name)"),
+                    [{"name": loc} for loc in _ACCESS_LOCATIONS_SEED],
+                )
 
 
-# ── 启动事件 ────────────────────────────────────────────────────
+# ── 启动事件 ─────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def _on_startup():
-    # 1. 先执行 Alembic 迁移（必须在任何 ORM 查询前，以确保表结构最新）
-    _run_alembic_migrations()
+    # 1. 结构补丁（添加缺少的列和种子数据）
+    _run_startup_migrations()
 
     # 2. 创建默认管理员
     from app.models.user import User

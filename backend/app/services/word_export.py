@@ -1,3 +1,7 @@
+"""
+维修记录 Word 导出 — 单页紧凑版
+每条记录严格控制在一页内（A4，1.2cm 边距）
+"""
 import os
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor, Cm
@@ -7,206 +11,156 @@ from docx.oxml import OxmlElement
 from app.models.repair import RepairRecord, PhotoPhase
 from app.core.config import UPLOAD_DIR
 
-
 STATUS_LABELS = {
     "pending":     "待维修",
     "in_progress": "维修中",
     "completed":   "已完成",
 }
-
 PHASE_ORDER = [
     (PhotoPhase.before, "维修前"),
     (PhotoPhase.during, "维修中"),
     (PhotoPhase.after,  "维修后"),
 ]
+MAX_PHOTOS_PER_PHASE = 2   # 每阶段最多2张，共6张
+PHOTO_WIDTH = 1.7           # 英寸
 
 
-# ── 工具函数 ────────────────────────────────────────────────
-
-def _set_cell_bg(cell, fill_hex: str):
+def _set_cell_bg(cell, fill_hex):
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), fill_hex)
+    shd.set(qn("w:val"), "clear"); shd.set(qn("w:color"), "auto"); shd.set(qn("w:fill"), fill_hex)
     tcPr.append(shd)
 
 
-def _bold_cell(cell, text: str, bg: str = "DBEAFE", align=WD_ALIGN_PARAGRAPH.CENTER):
+def _hdr(cell, text, bg="DBEAFE"):
     cell.text = text
-    p = cell.paragraphs[0]
-    p.alignment = align
+    p = cell.paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _zero_spacing(p)
     if p.runs:
-        p.runs[0].bold = True
-        p.runs[0].font.size = Pt(11)
+        p.runs[0].bold = True; p.runs[0].font.size = Pt(9)
     _set_cell_bg(cell, bg)
 
 
-def _add_page_break(doc: Document):
-    """在当前段落后插入分页符"""
-    from docx.oxml.ns import qn as _qn
-    p = doc.add_paragraph()
-    run = p.add_run()
-    br = OxmlElement("w:br")
-    br.set(_qn("w:type"), "page")
-    run._r.append(br)
+def _val(cell, text, align=WD_ALIGN_PARAGRAPH.LEFT):
+    cell.text = str(text) if text is not None else ""
+    p = cell.paragraphs[0]; p.alignment = align
+    _zero_spacing(p)
+    if p.runs:
+        p.runs[0].font.size = Pt(9)
 
 
-def _insert_photo(cell, img_path: str, caption: str):
-    """向单元格插入图片及说明文字"""
-    p = cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+def _zero_spacing(p):
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(1)
+
+
+def _insert_photo(cell, img_path, caption):
+    p = cell.paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _zero_spacing(p)
     try:
-        run = p.add_run()
-        run.add_picture(img_path, width=Inches(2.6))
+        p.add_run().add_picture(img_path, width=Inches(PHOTO_WIDTH))
         cap = cell.add_paragraph(caption)
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        cap.runs[0].font.size = Pt(8)
-        cap.runs[0].font.color.rgb = RGBColor(0x6b, 0x72, 0x80)
+        _zero_spacing(cap)
+        if cap.runs:
+            cap.runs[0].font.size = Pt(7)
+            cap.runs[0].font.color.rgb = RGBColor(0x6b, 0x72, 0x80)
     except Exception:
         p.text = "[图片加载失败]"
 
 
-# ── 核心：写一条维修记录到 doc ──────────────────────────────
+def _add_page_break(doc):
+    p = doc.add_paragraph()
+    _zero_spacing(p)
+    run = p.add_run()
+    br = OxmlElement("w:br"); br.set(qn("w:type"), "page")
+    run._r.append(br)
 
-def _write_record(doc: Document, record: RepairRecord):
-    """将单条维修记录写入已有 Document 对象"""
 
-    # 记录标题
-    title_p = doc.add_heading(
-        f"维修记录  {record.record_no}  —  {record.location}", level=1
-    )
-    title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    if title_p.runs:
-        title_p.runs[0].font.color.rgb = RGBColor(0x1a, 0x56, 0xdb)
+def _set_doc_margins(doc):
+    s = doc.sections[0]
+    s.top_margin = s.bottom_margin = s.left_margin = s.right_margin = Cm(1.2)
 
-    # ── 基本信息（3行×4列）──────────────────────────────────
-    info_table = doc.add_table(rows=3, cols=4)
-    info_table.style = "Table Grid"
-    rows_data = [
-        ("工单编号", record.record_no,   "维修日期", record.repair_date),
-        ("维修点位", record.location,    "维修人员", record.repairer or "—"),
-        ("当前状态", STATUS_LABELS.get(record.status.value, record.status.value), "故障描述", record.description or "—"),
-    ]
-    for i, (k1, v1, k2, v2) in enumerate(rows_data):
-        row = info_table.rows[i]
-        _bold_cell(row.cells[0], k1, align=WD_ALIGN_PARAGRAPH.LEFT)
-        row.cells[1].text = str(v1)
-        _bold_cell(row.cells[2], k2, align=WD_ALIGN_PARAGRAPH.LEFT)
-        row.cells[3].text = str(v2)
 
-    doc.add_paragraph()
+def _write_record(doc, record: RepairRecord):
+    # ── 标题
+    tp = doc.add_paragraph()
+    _zero_spacing(tp); tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    tr = tp.add_run("云南农业职业技术学院安防设备维修记录")
+    tr.bold = True; tr.font.size = Pt(13)
 
-    if record.repair_content:
-        p = doc.add_paragraph()
-        p.add_run("维修内容：").bold = True
-        p.add_run(record.repair_content)
-        doc.add_paragraph()
+    # ── 基本信息（3行×4列）
+    t = doc.add_table(rows=3, cols=4); t.style = "Table Grid"
+    col_w = [Cm(2.4), Cm(6.0), Cm(2.4), Cm(5.8)]
+    for row in t.rows:
+        for ci, cell in enumerate(row.cells):
+            cell.width = col_w[ci]
 
-    # ── 照片：三行×两列（维修前/中/后 各取前两张）────────────
-    doc.add_heading("维修照片", level=2)
+    _hdr(t.rows[0].cells[0], "工单编号"); _val(t.rows[0].cells[1], record.record_no)
+    _hdr(t.rows[0].cells[2], "维修日期"); _val(t.rows[0].cells[3], record.repair_date, WD_ALIGN_PARAGRAPH.CENTER)
+    _hdr(t.rows[1].cells[0], "维修点位"); _val(t.rows[1].cells[1], record.location)
+    _hdr(t.rows[1].cells[2], "维修人员"); _val(t.rows[1].cells[3], record.repairer or "")
+    _hdr(t.rows[2].cells[0], "当前状态"); _val(t.rows[2].cells[1], STATUS_LABELS.get(record.status.value, record.status.value), WD_ALIGN_PARAGRAPH.CENTER)
+    _hdr(t.rows[2].cells[2], "故障描述"); _val(t.rows[2].cells[3], (record.description or "")[:200])
 
-    # 构建 6行×2列表格（每阶段：标题合并行 + 图片行）
-    photo_table = doc.add_table(rows=6, cols=2)
-    photo_table.style = "Table Grid"
+    # ── 维修内容
+    t2 = doc.add_table(rows=1, cols=2); t2.style = "Table Grid"
+    t2.rows[0].cells[0].width = Cm(2.4); t2.rows[0].cells[1].width = Cm(14.2)
+    _hdr(t2.rows[0].cells[0], "维修内容")
+    _val(t2.rows[0].cells[1], (record.repair_content or "")[:300])
 
-    # 设置列宽（A4 正文宽约 15.6cm，各半）
-    for row in photo_table.rows:
+    # ── 照片（三阶段×最多2张，3列布局）
+    tp2 = doc.add_paragraph(); _zero_spacing(tp2)
+    r2 = tp2.add_run("维修照片"); r2.bold = True; r2.font.size = Pt(10)
+
+    # 每阶段最多2张，共6格，用3列（每列放一个阶段）
+    pt = doc.add_table(rows=2, cols=3); pt.style = "Table Grid"
+    for row in pt.rows:
         for cell in row.cells:
-            cell.width = Cm(7.8)
+            cell.width = Cm(5.6)
 
-    for idx, (phase, label) in enumerate(PHASE_ORDER):
-        header_row_idx = idx * 2       # 0, 2, 4
-        photo_row_idx  = idx * 2 + 1  # 1, 3, 5
-
-        # 标题行：合并两列
-        hdr_row = photo_table.rows[header_row_idx]
-        merged = hdr_row.cells[0].merge(hdr_row.cells[1])
-        _bold_cell(merged, label, bg="DBEAFE")
-
-        # 图片行
-        phase_photos = [p for p in record.photos if p.phase == phase]
-        img_row = photo_table.rows[photo_row_idx]
-
-        for col in range(2):
-            cell = img_row.cells[col]
-            if col < len(phase_photos):
-                photo = phase_photos[col]
+    for col_i, (phase, label) in enumerate(PHASE_ORDER):
+        phase_photos = [p for p in record.photos if p.phase == phase][:MAX_PHOTOS_PER_PHASE]
+        # 行0：阶段标题
+        _hdr(pt.rows[0].cells[col_i], label)
+        # 行1：图片（最多2张横排，子表格）
+        cell = pt.rows[1].cells[col_i]
+        if phase_photos:
+            sub = cell.add_table(rows=1, cols=len(phase_photos))
+            sub.style = "Table Grid"
+            for pi, photo in enumerate(phase_photos):
                 img_path = os.path.join(UPLOAD_DIR, photo.filename)
+                sc = sub.rows[0].cells[pi]
+                sc.width = Cm(5.6 / len(phase_photos))
                 if os.path.exists(img_path):
-                    _insert_photo(cell, img_path, photo.original_name or "")
+                    _insert_photo(sc, img_path, photo.original_name or f"图{pi+1}")
                 else:
-                    cell.paragraphs[0].text = "（文件不存在）"
-            else:
-                p = cell.paragraphs[0]
-                p.text = "（无图片）"
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    sc.paragraphs[0].text = "（文件不存在）"
+        else:
+            p = cell.paragraphs[0]; p.text = "无图片"; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _zero_spacing(p)
 
-    # 页脚签字栏
-    doc.add_paragraph()
-    sign_p = doc.add_paragraph(f"维修人员签字：____________    日期：{record.repair_date}")
-    sign_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    doc.add_paragraph("─" * 46)
+    # ── 签字栏
+    sp = doc.add_paragraph(f"维修人员：___________    日期：{record.repair_date}")
+    sp.alignment = WD_ALIGN_PARAGRAPH.RIGHT; _zero_spacing(sp)
+    if sp.runs: sp.runs[0].font.size = Pt(9)
 
-
-# ── 对外接口 ────────────────────────────────────────────────
 
 def export_to_word(record: RepairRecord, output_path: str) -> str:
-    """导出单条维修记录"""
-    doc = Document()
-    _set_doc_margins(doc)
-
-    title = doc.add_heading("维修记录报告", level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if title.runs:
-        title.runs[0].font.color.rgb = RGBColor(0x1a, 0x56, 0xdb)
-    doc.add_paragraph()
-
+    doc = Document(); _set_doc_margins(doc)
     _write_record(doc, record)
-
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     doc.save(output_path)
     return output_path
 
 
-def export_range_to_word(
-    records: list,
-    start_date: str,
-    end_date: str,
-    output_path: str,
-) -> str:
-    """将指定日期范围内的多条维修记录导出到同一个 Word 文档"""
-    doc = Document()
-    _set_doc_margins(doc)
-
-    # 封面标题
-    title = doc.add_heading("维修记录汇总报告", level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if title.runs:
-        title.runs[0].font.color.rgb = RGBColor(0x1a, 0x56, 0xdb)
-
-    sub = doc.add_paragraph(f"导出时间范围：{start_date}  至  {end_date}    共 {len(records)} 条记录")
-    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    sub.runs[0].font.size = Pt(12)
-    doc.add_paragraph()
-
+def export_range_to_word(records, start_date, end_date, output_path):
+    doc = Document(); _set_doc_margins(doc)
     for i, record in enumerate(records):
         _write_record(doc, record)
-        # 记录之间插入分页符（最后一条不加）
         if i < len(records) - 1:
             _add_page_break(doc)
-
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     doc.save(output_path)
     return output_path
-
-
-def _set_doc_margins(doc: Document):
-    """设置页面边距（上下左右 2cm）"""
-    from docx.oxml.ns import qn as _qn
-    section = doc.sections[0]
-    section.top_margin    = Cm(2)
-    section.bottom_margin = Cm(2)
-    section.left_margin   = Cm(2)
-    section.right_margin  = Cm(2)

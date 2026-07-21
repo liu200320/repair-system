@@ -14,6 +14,14 @@ const routes = [
   { path: '/consumables/create', name: 'ConsumableCreate', component: () => import('../views/ConsumableForm.vue'), meta: { title: '新建耗材记录' } },
   { path: '/consumables/:id',    name: 'ConsumableDetail', component: () => import('../views/ConsumableForm.vue'), meta: { title: '耗材记录详情' } },
   { path: '/consumables/:id/edit', name: 'ConsumableEdit', component: () => import('../views/ConsumableForm.vue'), meta: { title: '编辑耗材记录' } },
+  { path: '/network-inspections',        name: 'NetworkInspectionList',   component: () => import('../views/NetworkInspectionList.vue'), meta: { title: '网络基础设施巡检' } },
+  { path: '/network-inspections/create', name: 'NetworkInspectionCreate', component: () => import('../views/NetworkInspectionForm.vue'), meta: { title: '新建巡检记录' } },
+  { path: '/network-inspections/:id',    name: 'NetworkInspectionDetail', component: () => import('../views/NetworkInspectionForm.vue'), meta: { title: '巡检记录详情' } },
+  { path: '/network-inspections/:id/edit', name: 'NetworkInspectionEdit', component: () => import('../views/NetworkInspectionForm.vue'), meta: { title: '编辑巡检记录' } },
+  { path: '/access-inspections',          name: 'AccessInspectionList',   component: () => import('../views/AccessInspectionList.vue'), meta: { title: '门禁日常巡检' } },
+  { path: '/access-inspections/create',   name: 'AccessInspectionCreate', component: () => import('../views/AccessInspectionForm.vue'), meta: { title: '新建门禁巡检记录' } },
+  { path: '/access-inspections/:id',      name: 'AccessInspectionDetail', component: () => import('../views/AccessInspectionForm.vue'), meta: { title: '门禁巡检记录详情' } },
+  { path: '/access-inspections/:id/edit', name: 'AccessInspectionEdit',   component: () => import('../views/AccessInspectionForm.vue'), meta: { title: '编辑门禁巡检记录' } },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })

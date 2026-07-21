@@ -35,17 +35,16 @@ async function handleLogout() {
           :default-active="route.path" router style="border:none; height:60px;">
           <el-menu-item index="/repairs">维修记录</el-menu-item>
           <el-menu-item index="/consumables">耗材管理</el-menu-item>
+          <el-menu-item index="/network-inspections">网络巡检</el-menu-item>
+          <el-menu-item index="/access-inspections">门禁巡检</el-menu-item>
           <el-menu-item index="/dashboard">统计看板</el-menu-item>
           <el-menu-item v-if="auth.isAdmin" index="/locations">点位管理</el-menu-item>
           <el-menu-item v-if="auth.isAdmin" index="/users">用户管理</el-menu-item>
         </el-menu>
       </div>
 
-      <!-- 右：用户 + 操作 -->
+      <!-- 右：用户 -->
       <div style="display:flex; align-items:center; gap:12px;">
-        <el-button type="primary" plain size="small" @click="router.push('/repairs/create')">
-          <el-icon><Plus /></el-icon> 新建记录
-        </el-button>
         <el-dropdown @command="(cmd) => cmd === 'logout' && handleLogout()">
           <span style="color:#c8d9f8; cursor:pointer; font-size:14px;">
             👤 {{ auth.user?.full_name || auth.user?.username }}

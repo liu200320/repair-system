@@ -103,10 +103,14 @@ onMounted(load)
           </el-form-item>
         </el-form>
 
-        <!-- 批量导出按钮 -->
-        <el-button type="warning" @click="rangeDialogVisible = true">
-          <el-icon><Download /></el-icon>&nbsp;按时间段批量导出 Word
-        </el-button>
+        <div style="display:flex; gap:8px; flex-shrink:0;">
+          <el-button type="warning" @click="rangeDialogVisible = true">
+            按时间段批量导出 Word
+          </el-button>
+          <el-button type="success" @click="router.push('/repairs/create')">
+            <el-icon><Plus /></el-icon> 新建维修记录
+          </el-button>
+        </div>
       </div>
     </el-card>
 

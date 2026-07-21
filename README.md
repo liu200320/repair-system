@@ -1,7 +1,7 @@
 # 维修记录 Web 系统
 
-> 云南农业职业技术学院安防设备维修与耗材管理平台  
-> 技术栈：Vue 3 + Vite + Element Plus + ECharts ／ FastAPI + MySQL + Docker
+> 云南农业职业技术学院安防设备维修、耗材管理及巡检记录平台  
+> 技术栈：Vue 3 + Vite + Element Plus + ECharts ／ FastAPI + MySQL
 
 ---
 
@@ -9,13 +9,14 @@
 
 | 模块 | 功能 |
 |------|------|
-| 🔐 用户认证 | JWT 登录、角色权限（admin / viewer） |
-| 📋 维修记录 | CRUD、工单编号自动生成、状态跟踪 |
+| 🔐 用户认证 | JWT 登录、角色权限（admin / viewer）、主动登出（旧 token 立即失效） |
+| 📋 维修记录 | CRUD、工单编号自动生成（R开头）、状态跟踪、单条/时间段批量导出 Word |
 | 📸 照片上传 | 维修前 / 维修中 / 维修后三阶段拍照，前端压缩，自动生成缩略图 |
-| 📄 Word 导出 | 一键导出含照片的维修工单文档 |
 | 🔧 耗材管理 | 耗材使用记录 CRUD、明细行项、照片上传、Word 导出 |
+| 🌐 网络巡检 | 网络基础设施日常巡检 CRUD（N开头单号）、照片上传、单条/时间段批量导出 Word |
+| 🚧 门禁巡检 | 门禁日常巡检 CRUD（A开头单号）、照片上传、单条/时间段批量导出 Word |
 | 📊 统计看板 | 状态汇总、30 天趋势图、维修量 Top10 点位（ECharts） |
-| 📍 点位管理 | 维修点位库增删改查（管理员） |
+| 📍 点位管理 | 三合一：维修点位 / 网络巡检点位 / 门禁点位 各自增删改查（管理员） |
 | 👥 用户管理 | 新增 / 禁用用户、重置密码（管理员） |
 
 ---
@@ -25,9 +26,8 @@
 ### 前提
 
 - Python 3.10+
-- Node.js 18+
+- Node.js 20+
 - MySQL 8.0（本地已运行）
-- Windows 用户可直接双击 `启动项目.bat`
 
 ### 1. 配置后端环境
 
@@ -46,14 +46,14 @@ DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=repair_db
 UPLOAD_DIR=uploads
-MAX_FILE_SIZE=10485760        # 10 MB
+MAX_FILE_SIZE=10485760
 
-# 必须设置，否则启动报错。生成命令：
-# python -c "import secrets; print(secrets.token_hex(32))"
+# 必须设置，否则启动报错
+# 生成命令：python -c "import secrets; print(secrets.token_hex(32))"
 SECRET_KEY=your_random_secret_key_here
 ACCESS_TOKEN_EXPIRE_MINUTES=480
 
-# CORS 允许来源（本地开发保持默认即可）
+# CORS 允许来源（本地开发保持默认）
 ALLOWED_ORIGINS=http://localhost:5173
 
 # 导出文件自动清理保留天数
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-首次启动自动建表（`repair_db`）。接口文档：http://localhost:8000/docs
+首次启动自动建表并写入预置地点数据。接口文档：http://localhost:8000/docs
 
 ### 3. 启动前端
 
@@ -82,32 +82,11 @@ npm run dev
 
 ---
 
-## 生产部署（Docker，推荐）
+## 生产部署（Linux + PM2 + Nginx，推荐）
 
-### 前提：Linux 服务器已安装 Docker + Docker Compose
+详细步骤见 [LINUX部署教程.md](LINUX部署教程.md)
 
-```bash
-# 1. 构建前端静态文件
-cd frontend
-npm run build
-
-# 2. 在项目根目录创建 .env（docker-compose 读取此文件）
-cp backend/.env.example .env
-# 必须修改以下字段：
-#   SECRET_KEY=<用 python -c "import secrets; print(secrets.token_hex(32))" 生成>
-#   DB_PASSWORD=<自定义数据库密码>
-#   ALLOWED_ORIGINS=http://<服务器IP或域名>
-
-# 3. 一键启动（db + backend + nginx 三服务）
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-```
-
-访问：`http://你的服务器IP`
-
-> 详细步骤见 [DEPLOY.md](DEPLOY.md) | 手动部署见 [DEPLOY_MANUAL.md](DEPLOY_MANUAL.md)
+更新已有部署见 [v1.4更新部署教程.md](v1.4更新部署教程.md)
 
 ---
 
@@ -117,38 +96,31 @@ docker-compose logs -f
 维修记录web项目/
 ├── frontend/                  # Vue 3 前端
 │   └── src/
-│       ├── api/               # Axios 请求封装（auth / repair / consumable / stats）
-│       ├── components/        # PhotoUploader 照片上传组件
+│       ├── api/               # Axios 请求封装（各模块独立文件）
 │       ├── router/            # Vue Router（含导航守卫）
-│       ├── stores/            # Pinia 状态管理（auth / repair）
+│       ├── stores/            # Pinia 状态管理
 │       └── views/             # 各功能页面（见下表）
 ├── backend/                   # FastAPI 后端
 │   ├── alembic/               # 数据库迁移（Alembic）
-│   │   ├── env.py             # 迁移环境配置
-│   │   └── versions/          # 迁移版本文件
+│   │   └── versions/          # 001~006 迁移版本文件
 │   ├── app/
-│   │   ├── api/v1/            # 路由层（auth / repair / upload / export /
-│   │   │                      #         location / monitor_point / stats / consumable）
-│   │   ├── core/              # config / database / security（JWT + bcrypt）
-│   │   ├── models/            # SQLAlchemy 数据模型
+│   │   ├── api/v1/            # 路由层（8个模块）
+│   │   ├── core/              # config / database / security
+│   │   ├── models/            # SQLAlchemy 数据模型（11张表）
 │   │   ├── schemas/           # Pydantic 验证模型
 │   │   └── services/          # 业务逻辑 / Word 导出 / 图片处理
-│   ├── uploads/               # 图片存储目录（Docker 挂载为命名卷）
+│   ├── uploads/               # 图片 + 导出文件存储
 │   ├── alembic.ini
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── main.py
 ├── database/
-│   └── repair_db.sql          # 完整数据库 DDL（备份 / 初始化用）
+│   └── repair_db.sql          # 数据库 DDL（备份用）
 ├── nginx/
-│   ├── nginx.conf             # Docker 用 Nginx 配置
-│   └── repair-system-site.conf# 裸机 Linux 站点配置
+│   └── repair-system-site.conf# Linux 裸机 Nginx 配置
 ├── docker-compose.yml
-├── .env.example               # 根目录环境变量模板（docker-compose 使用）
-├── 启动项目.bat               # Windows 本地一键启动
-├── monitor_points.csv         # 监控点位种子数据
-├── DEPLOY.md                  # Docker 部署详细教程
-├── DEPLOY_MANUAL.md           # 手动部署教程
+├── LINUX部署教程.md            # 初次部署教程
+├── v1.4更新部署教程.md         # v1.4 更新部署教程
 └── README.md
 ```
 
@@ -158,12 +130,16 @@ docker-compose logs -f
 |------|------|
 | `Login.vue` | 登录页 |
 | `Dashboard.vue` | 统计看板（ECharts） |
-| `RepairList.vue` | 维修记录列表（分页 + 筛选） |
-| `RepairForm.vue` | 新建 / 编辑维修记录 |
+| `RepairList.vue` | 维修记录列表（分页 + 筛选 + 批量导出） |
+| `RepairForm.vue` | 新建 / 编辑维修记录 + 照片上传 |
 | `RepairDetail.vue` | 维修记录详情 |
-| `ConsumableList.vue` | 耗材使用记录列表 |
-| `ConsumableForm.vue` | 新建 / 编辑耗材记录 |
-| `LocationManager.vue` | 点位管理（管理员） |
+| `ConsumableList.vue` | 耗材使用记录列表 + 批量导出 |
+| `ConsumableForm.vue` | 新建 / 编辑耗材记录 + 照片上传 |
+| `NetworkInspectionList.vue` | 网络巡检列表 + 批量导出 |
+| `NetworkInspectionForm.vue` | 新建 / 编辑网络巡检记录 + 照片上传 |
+| `AccessInspectionList.vue` | 门禁巡检列表 + 批量导出 |
+| `AccessInspectionForm.vue` | 新建 / 编辑门禁巡检记录 + 照片上传 |
+| `LocationManager.vue` | 点位管理（三标签：维修/网络/门禁） |
 | `UserManager.vue` | 用户管理（管理员） |
 
 ---
@@ -174,14 +150,21 @@ docker-compose logs -f
 
 | 表名 | 说明 |
 |------|------|
-| `users` | 用户（id, username, role: admin/viewer, is_active, token_version） |
-| `repair_records` | 维修工单（record_no 格式 R20260719001） |
-| `repair_photos` | 维修照片（phase: before/during/after，含缩略图） |
-| `repair_locations` | 维修点位库 |
-| `monitor_points` | 监控点位（只读，外部维护） |
-| `consumable_records` | 耗材使用记录（record_no 格式 C20260719001） |
-| `consumable_items` | 耗材明细行项（name, unit, quantity, signer） |
-| `consumable_photos` | 耗材记录照片（含缩略图） |
+| `users` | 用户（含 token_version，支持主动登出） |
+| `repair_records` | 维修工单（R开头单号） |
+| `repair_photos` | 维修照片（before/during/after 三阶段） |
+| `monitor_points` | 维修点位库 |
+| `consumable_records` | 耗材使用记录（C开头单号） |
+| `consumable_items` | 耗材明细行项 |
+| `consumable_photos` | 耗材照片 |
+| `network_locations` | 网络巡检预置地点（21个，可增删） |
+| `network_inspection_records` | 网络基础设施巡检记录（N开头单号） |
+| `network_inspection_photos` | 网络巡检照片 |
+| `access_locations` | 门禁预置地点（3个，可增删） |
+| `access_inspection_records` | 门禁日常巡检记录（A开头单号） |
+| `access_inspection_photos` | 门禁巡检照片 |
+
+> 所有表在首次启动时由 `create_all` 自动创建，预置地点数据由启动脚本自动写入，无需手动建表。
 
 ---
 
@@ -191,9 +174,11 @@ docker-compose logs -f
 |------|:-----:|:------:|
 | 查看所有记录 | ✅ | ✅ |
 | 新建 / 编辑记录 | ✅ | ✅ |
-| 删除维修记录 | ✅ | ❌ |
+| 上传照片 | ✅ | ✅ |
+| 导出 Word | ✅ | ✅ |
+| 删除记录 | ✅ | ❌ |
 | 用户管理 | ✅ | ❌ |
-| 点位管理 | ✅ | ❌ |
+| 点位管理 | ✅ | ✅ |
 
 ---
 
@@ -201,7 +186,8 @@ docker-compose logs -f
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
-| 2026-07-21 | v1.4 | 安全加固：JWT密钥强制环境变量、CORS来源可配置、JWT主动吊销（登出接口）；新增Alembic迁移管理；导出文件定期自动清理；前端依赖版本锁定；修复Vite代理端口 |
+| 2026-07-21 | v1.5 | 新增门禁日常巡检模块（CRUD+照片+单条/批量导出）；点位管理升级为三标签页（维修/网络/门禁）；导出样式优化（单页紧凑排版） |
+| 2026-07-21 | v1.4 | 新增网络基础设施日常巡检模块；安全加固（JWT主动吊销、SECRET_KEY强制配置、CORS可配置）；导出文件定期清理；前端依赖版本锁定 |
 | 2026-07-19 | v1.3 | 新增耗材管理模块（CRUD + 照片上传 + Word 导出） |
 | 2026-07-xx | v1.2 | 新增统计看板（ECharts 图表） |
 | 2026-07-xx | v1.1 | 新增用户管理、点位管理、JWT 认证 |
