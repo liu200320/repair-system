@@ -11,17 +11,19 @@ from sqlalchemy import inspect as sa_inspect
 from app.api.v1 import auth, consumable, export, location, monitor_point, repair, stats, upload
 from app.core.config import ALLOWED_ORIGINS, EXPORT_RETENTION_DAYS, UPLOAD_DIR
 from app.core.database import engine, SessionLocal
-import app.models.consumable   # noqa
-import app.models.location     # noqa
-import app.models.monitor_point  # noqa
-import app.models.repair       # noqa
-import app.models.user         # noqa
+import app.models.consumable        # noqa
+import app.models.location          # noqa
+import app.models.monitor_point     # noqa
+import app.models.network_location  # noqa  仅注册模型，建表由 Alembic 迁移003负责
+import app.models.repair            # noqa
+import app.models.user              # noqa
 
 # 自动建表（新部署时建表；Alembic 负责后续 schema 迁移）
 app.models.repair.Base.metadata.create_all(bind=engine)
 app.models.user.Base.metadata.create_all(bind=engine)
 app.models.location.Base.metadata.create_all(bind=engine)
 app.models.consumable.Base.metadata.create_all(bind=engine)
+# network_locations 由迁移003建表并写入种子数据，不在此处 create_all
 
 app = FastAPI(
     title="维修记录系统 API",
