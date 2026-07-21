@@ -33,7 +33,7 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+    token = create_access_token({"sub": str(user.id), "role": user.role}, token_version=user.token_version)
     return {"access_token": token, "token_type": "bearer", "user": user}
 
 
@@ -116,3 +116,10 @@ def delete_user(uid: int, db: Session = Depends(get_db), current_user=Depends(re
         raise HTTPException(status_code=404, detail="用户不存在")
     db.delete(user)
     db.commit()
+
+
+@router.post("/auth/logout", summary="登出（使当前 token 立即失效）")
+def logout(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    current_user.token_version = (current_user.token_version or 0) + 1
+    db.commit()
+    return {"message": "已登出"}

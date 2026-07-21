@@ -16,11 +16,11 @@ export default defineConfig({
     proxy: {
       // 开发时将 /api 和 /uploads 代理到后端
       '/api': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },

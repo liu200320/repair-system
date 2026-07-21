@@ -36,6 +36,9 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD:-repair123}
       DB_NAME: ${DB_NAME:-repair_db}
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
+      EXPORT_RETENTION_DAYS: ${EXPORT_RETENTION_DAYS:-7}
     volumes:
       - uploads_data:/app/uploads
     ports:

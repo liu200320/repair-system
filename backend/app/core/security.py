@@ -7,7 +7,9 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 
-SECRET_KEY = os.getenv("SECRET_KEY", "repair-system-secret-key-change-in-production-2026")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("环境变量 SECRET_KEY 未设置，请在 .env 中配置一个随机强密钥")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8小时
 
@@ -23,9 +25,10 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, token_version: int = 0) -> str:
     payload = data.copy()
     payload["exp"] = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload["tv"] = token_version
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -50,6 +53,9 @@ def get_current_user(
 
     user = db.query(User).filter(User.id == int(user_id)).first()
     if not user or not user.is_active:
+        raise credentials_exc
+    # 校验 token_version，确保登出后旧 token 立即失效
+    if payload.get("tv", 0) != user.token_version:
         raise credentials_exc
     return user
 
