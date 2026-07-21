@@ -34,7 +34,7 @@
 ```bash
 cd backend
 cp .env.example .env
-# 编辑 .env，填入 MySQL 连接信息
+# 编辑 .env，填入 MySQL 连接信息和必要密钥
 ```
 
 `.env` 关键字段：
@@ -46,7 +46,18 @@ DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=repair_db
 UPLOAD_DIR=uploads
-MAX_FILE_SIZE=10485760   # 10 MB
+MAX_FILE_SIZE=10485760        # 10 MB
+
+# 必须设置，否则启动报错。生成命令：
+# python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=your_random_secret_key_here
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+
+# CORS 允许来源（本地开发保持默认即可）
+ALLOWED_ORIGINS=http://localhost:5173
+
+# 导出文件自动清理保留天数
+EXPORT_RETENTION_DAYS=7
 ```
 
 ### 2. 安装依赖并启动后端
@@ -80,9 +91,12 @@ npm run dev
 cd frontend
 npm run build
 
-# 2. 配置生产环境变量
+# 2. 在项目根目录创建 .env（docker-compose 读取此文件）
 cp backend/.env.example .env
-# 编辑 .env，修改 DB_PASSWORD 等生产参数
+# 必须修改以下字段：
+#   SECRET_KEY=<用 python -c "import secrets; print(secrets.token_hex(32))" 生成>
+#   DB_PASSWORD=<自定义数据库密码>
+#   ALLOWED_ORIGINS=http://<服务器IP或域名>
 
 # 3. 一键启动（db + backend + nginx 三服务）
 docker-compose up -d
@@ -109,6 +123,9 @@ docker-compose logs -f
 │       ├── stores/            # Pinia 状态管理（auth / repair）
 │       └── views/             # 各功能页面（见下表）
 ├── backend/                   # FastAPI 后端
+│   ├── alembic/               # 数据库迁移（Alembic）
+│   │   ├── env.py             # 迁移环境配置
+│   │   └── versions/          # 迁移版本文件
 │   ├── app/
 │   │   ├── api/v1/            # 路由层（auth / repair / upload / export /
 │   │   │                      #         location / monitor_point / stats / consumable）
@@ -117,6 +134,7 @@ docker-compose logs -f
 │   │   ├── schemas/           # Pydantic 验证模型
 │   │   └── services/          # 业务逻辑 / Word 导出 / 图片处理
 │   ├── uploads/               # 图片存储目录（Docker 挂载为命名卷）
+│   ├── alembic.ini
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── main.py
@@ -126,6 +144,7 @@ docker-compose logs -f
 │   ├── nginx.conf             # Docker 用 Nginx 配置
 │   └── repair-system-site.conf# 裸机 Linux 站点配置
 ├── docker-compose.yml
+├── .env.example               # 根目录环境变量模板（docker-compose 使用）
 ├── 启动项目.bat               # Windows 本地一键启动
 ├── monitor_points.csv         # 监控点位种子数据
 ├── DEPLOY.md                  # Docker 部署详细教程
@@ -155,7 +174,7 @@ docker-compose logs -f
 
 | 表名 | 说明 |
 |------|------|
-| `users` | 用户（id, username, role: admin/viewer, is_active） |
+| `users` | 用户（id, username, role: admin/viewer, is_active, token_version） |
 | `repair_records` | 维修工单（record_no 格式 R20260719001） |
 | `repair_photos` | 维修照片（phase: before/during/after，含缩略图） |
 | `repair_locations` | 维修点位库 |
@@ -182,6 +201,7 @@ docker-compose logs -f
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-21 | v1.4 | 安全加固：JWT密钥强制环境变量、CORS来源可配置、JWT主动吊销（登出接口）；新增Alembic迁移管理；导出文件定期自动清理；前端依赖版本锁定；修复Vite代理端口 |
 | 2026-07-19 | v1.3 | 新增耗材管理模块（CRUD + 照片上传 + Word 导出） |
 | 2026-07-xx | v1.2 | 新增统计看板（ECharts 图表） |
 | 2026-07-xx | v1.1 | 新增用户管理、点位管理、JWT 认证 |
