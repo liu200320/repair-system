@@ -70,9 +70,6 @@ async function handleLogin() {
         </el-button>
       </el-form>
 
-      <p style="margin-top:16px; color:#909399; font-size:13px; text-align:center;">
-        默认账号：admin &nbsp;/&nbsp; admin123（首次登录请修改密码）
-      </p>
     </div>
   </div>
 </template>

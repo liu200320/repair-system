@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useRepairStore } from '../stores/repair'
 import { exportWord, exportWordRange } from '../api/repair'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const store = useRepairStore()
@@ -48,6 +49,12 @@ async function handleExportSingle(row) {
   } catch {
     ElMessage.error('导出失败')
   }
+}
+
+async function handleRowCommand(cmd, row) {
+  if (cmd === 'edit')   return router.push(`/repairs/${row.id}/edit`)
+  if (cmd === 'export') return handleExportSingle(row)
+  if (cmd === 'delete') return handleDelete(row.id)
 }
 
 async function handleExportRange() {
@@ -131,12 +138,23 @@ onMounted(load)
         <el-table-column label="照片数" width="80" align="center">
           <template #default="{ row }">{{ row.photos?.length || 0 }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="router.push(`/repairs/${row.id}`)">详情</el-button>
-            <el-button size="small" type="primary" @click="router.push(`/repairs/${row.id}/edit`)">编辑</el-button>
-            <el-button size="small" type="success" @click="handleExportSingle(row)">导出</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row.id)">删除</el-button>
+            <el-button size="small" type="primary" @click="router.push(`/repairs/${row.id}`)">详情</el-button>
+            <el-dropdown
+              trigger="click"
+              @command="cmd => handleRowCommand(cmd, row)"
+              style="margin-left: 8px;"
+            >
+              <el-button size="small">更多<el-icon style="margin-left:2px;"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="export">导出 Word</el-dropdown-item>
+                  <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
