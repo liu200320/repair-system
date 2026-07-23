@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -7,6 +7,7 @@ from app.core.security import (
     verify_password, create_access_token,
     get_current_user, hash_password, require_admin,
 )
+from app.core.limiter import limiter
 from app.models.user import User
 from app.schemas.user import UserLogin, TokenOut, UserOut, UserCreate
 
@@ -27,7 +28,8 @@ class PasswordChange(BaseModel):
 # ── 登录 ───────────────────────────────────────────────────
 
 @router.post("/auth/login", response_model=TokenOut, summary="用户登录")
-def login(data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == data.username).first()
     if not user or not verify_password(data.password, user.hashed_pw):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
@@ -49,12 +51,20 @@ def list_users(db: Session = Depends(get_db), _=Depends(require_admin)):
     return db.query(User).order_by(User.id).all()
 
 
+def _validate_password(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少8位")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="密码必须包含至少一个数字")
+    if not any(c.isalpha() for c in password):
+        raise HTTPException(status_code=400, detail="密码必须包含至少一个字母")
+
+
 @router.post("/auth/users", response_model=UserOut, status_code=201, summary="新建用户（仅管理员）")
 def create_user(data: UserCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=400, detail="用户名已存在")
-    if len(data.password) < 6:
-        raise HTTPException(status_code=400, detail="密码至少6位")
+    _validate_password(data.password)
     user = User(
         username=data.username,
         hashed_pw=hash_password(data.password),
@@ -97,8 +107,7 @@ def change_password(
 ):
     if current_user.id != uid and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="无权限修改他人密码")
-    if len(data.password) < 6:
-        raise HTTPException(status_code=400, detail="密码至少6位")
+    _validate_password(data.password)
     user = db.query(User).filter(User.id == uid).first()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")

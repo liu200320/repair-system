@@ -1,4 +1,5 @@
 import os
+import re
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -9,6 +10,8 @@ from app.services import repair_service
 from app.services.word_export import export_to_word, export_range_to_word
 
 router = APIRouter()
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 @router.post("/repairs/{repair_id}/export", summary="导出单条维修记录为 Word")
@@ -46,6 +49,10 @@ def export_range(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    if not _DATE_RE.match(start_date) or not _DATE_RE.match(end_date):
+        raise HTTPException(status_code=400, detail="日期格式必须为 YYYY-MM-DD")
+    if start_date > end_date:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
     # 查询日期范围内所有记录（按日期升序）
     _, records = repair_service.list_repairs(
         db,

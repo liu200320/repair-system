@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.limiter import limiter
 
 from app.api.v1 import access_inspection, auth, consumable, export, location, monitor_point, network_inspection, repair, stats, upload
 from app.core.config import ALLOWED_ORIGINS, EXPORT_RETENTION_DAYS, UPLOAD_DIR
@@ -28,6 +31,9 @@ app = FastAPI(
     version="2.0.0",
     description="维修记录 CRUD、图片上传、Word导出、认证、统计",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -133,16 +139,22 @@ async def _on_startup():
     # 1. 结构补丁（添加缺少的列和种子数据）
     _run_startup_migrations()
 
-    # 2. 创建默认管理员
+    # 2. 创建默认管理员（密码必须从环境变量获取）
     from app.models.user import User
     from app.core.security import hash_password
     db = SessionLocal()
     try:
         if db.query(User).count() == 0:
-            db.add(User(username="admin", hashed_pw=hash_password("admin123"),
+            init_pw = os.getenv("ADMIN_INIT_PASSWORD")
+            if not init_pw:
+                raise RuntimeError(
+                    "首次启动需设置环境变量 ADMIN_INIT_PASSWORD，"
+                    "例如：ADMIN_INIT_PASSWORD=$(python -c \"import secrets; print(secrets.token_urlsafe(16))\")"
+                )
+            db.add(User(username="admin", hashed_pw=hash_password(init_pw),
                         full_name="管理员", role="admin"))
             db.commit()
-            print("[OK] Default admin created: admin / admin123")
+            print("[OK] Default admin created: admin / <ADMIN_INIT_PASSWORD>")
     finally:
         db.close()
 
@@ -155,4 +167,4 @@ async def _on_startup():
 
 @app.get("/health", tags=["健康检查"])
 def health():
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok"}

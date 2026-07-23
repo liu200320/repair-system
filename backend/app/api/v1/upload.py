@@ -25,12 +25,10 @@ MIME_TO_EXT = {
 
 def _save_file(upload_file: UploadFile) -> tuple[str, str]:
     """保存上传文件，返回 (存储文件名, 相对路径)"""
-    # 优先从文件名取扩展名
     ext = ""
     if upload_file.filename and "." in upload_file.filename:
         ext = upload_file.filename.rsplit(".", 1)[-1].lower()
 
-    # 文件名没有合法扩展名时，用 Content-Type 兜底
     if ext not in ALLOWED_EXTENSIONS:
         ext = MIME_TO_EXT.get((upload_file.content_type or "").lower(), "")
 
@@ -41,12 +39,22 @@ def _save_file(upload_file: UploadFile) -> tuple[str, str]:
                    f"类型：{upload_file.content_type}），支持：jpg / jpeg / png / webp / heic",
         )
 
+    # 分块读取，超出限制立即中断，避免内存耗尽
+    chunks = []
+    size = 0
+    chunk_size = 64 * 1024  # 64KB per chunk
+    while True:
+        chunk = upload_file.file.read(chunk_size)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"文件超过限制（最大 {MAX_FILE_SIZE // 1024 // 1024}MB）")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
     unique_name = f"{uuid.uuid4().hex}.{ext}"
     file_path = os.path.join(UPLOAD_DIR, unique_name)
-
-    content = upload_file.file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"文件超过限制（最大 {MAX_FILE_SIZE // 1024 // 1024}MB）")
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(file_path, "wb") as f:

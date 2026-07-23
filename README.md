@@ -9,7 +9,7 @@
 
 | 模块 | 功能 |
 |------|------|
-| 🔐 用户认证 | JWT 登录、角色权限（admin / viewer）、主动登出（旧 token 立即失效） |
+| 🔐 用户认证 | JWT 登录、角色权限（admin / viewer）、主动登出（旧 token 立即失效）、登录防暴力破解（10次/分钟/IP） |
 | 📋 维修记录 | CRUD、工单编号自动生成（R开头）、状态跟踪、单条/时间段批量导出 Word |
 | 📸 照片上传 | 维修前 / 维修中 / 维修后三阶段拍照，前端压缩，自动生成缩略图 |
 | 🔧 耗材管理 | 耗材使用记录 CRUD、明细行项、照片上传、Word 导出 |
@@ -53,6 +53,10 @@ MAX_FILE_SIZE=10485760
 SECRET_KEY=your_random_secret_key_here
 ACCESS_TOKEN_EXPIRE_MINUTES=480
 
+# 首次启动建库时创建初始管理员（数据库已有用户时此项不生效）
+# 生成命令：python -c "import secrets; print(secrets.token_urlsafe(16))"
+ADMIN_INIT_PASSWORD=your_strong_admin_password
+
 # CORS 允许来源（本地开发保持默认）
 ALLOWED_ORIGINS=http://localhost:5173
 
@@ -86,7 +90,9 @@ npm run dev
 
 详细步骤见 [LINUX部署教程.md](LINUX部署教程.md)
 
-更新已有部署见 [v1.4更新部署教程.md](v1.4更新部署教程.md)
+更新已有部署见：
+- [v1.4更新部署教程.md](v1.4更新部署教程.md)
+- [v1.5安全加固部署教程.md](v1.5安全加固部署教程.md)（本次安全更新）
 
 ---
 
@@ -105,7 +111,7 @@ npm run dev
 │   │   └── versions/          # 001~006 迁移版本文件
 │   ├── app/
 │   │   ├── api/v1/            # 路由层（8个模块）
-│   │   ├── core/              # config / database / security
+│   │   ├── core/              # config / database / security / limiter
 │   │   ├── models/            # SQLAlchemy 数据模型（11张表）
 │   │   ├── schemas/           # Pydantic 验证模型
 │   │   └── services/          # 业务逻辑 / Word 导出 / 图片处理
@@ -121,6 +127,7 @@ npm run dev
 ├── docker-compose.yml
 ├── LINUX部署教程.md            # 初次部署教程
 ├── v1.4更新部署教程.md         # v1.4 更新部署教程
+├── v1.5安全加固部署教程.md     # v1.7 安全加固更新部署教程
 └── README.md
 ```
 
@@ -186,6 +193,7 @@ npm run dev
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-23 | v1.7 | 安全加固：登录防暴力破解（slowapi 10次/分钟/IP）；管理员初始密码改为环境变量注入；文件上传改分块读取防内存耗尽；导出日期参数严格校验防路径遍历；密码复杂度提升（8位+字母+数字）；健康检查不再暴露版本号 |
 | 2026-07-22 | v1.6 | 前端UI重构：顶部横栏改为左侧固定Sidebar（桌面可收起至图标模式，移动端汉堡菜单+遮罩）；全局设计token（CSS变量统一管理颜色/圆角/阴影）；Dashboard统计卡片改用EP图标；列表操作列收为「详情+更多▼」下拉；登录页移除明文默认密码提示 |
 | 2026-07-21 | v1.5 | 新增门禁日常巡检模块（CRUD+照片+单条/批量导出）；点位管理升级为三标签页（维修/网络/门禁）；导出样式优化（单页紧凑排版） |
 | 2026-07-21 | v1.4 | 新增网络基础设施日常巡检模块；安全加固（JWT主动吊销、SECRET_KEY强制配置、CORS可配置）；导出文件定期清理；前端依赖版本锁定 |
